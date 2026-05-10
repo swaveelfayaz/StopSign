@@ -92,10 +92,9 @@
     </div>
 
     <script>
-        // 1. Setup Map with a default starting point (Mangalore)
+        // 1. Setup Map
         var map = L.map('map').setView([12.9141, 74.8560], 11);
 
-        // 2. Load Visuals (NEW RELIABLE GLOBAL SERVER)
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap contributors'
         }).addTo(map);
@@ -109,13 +108,12 @@
         map.on('locationfound', function(e) {
             if (marker) map.removeLayer(marker);
             marker = L.marker(e.latlng).addTo(map);
-            marker.bindPopup("📍 Your Current Location").openPopup();
+            marker.bindPopup("📍 Your Location").openPopup();
             updateRisk(e.latlng.lat, e.latlng.lng);
         });
 
         map.on('locationerror', function(e) {
             document.getElementById('risk-indicator').innerHTML = "CLICK MAP TO ANALYZE";
-            console.log("Location access denied. Waiting for manual click.");
         });
 
         // --- MANUAL CLICK HANDLER ---
@@ -133,70 +131,54 @@
             const rainVal = document.getElementById('rain');
             
             riskBox.innerHTML = "AI ANALYZING...";
-            riskBox.style.background = "#34495e";
-            riskBox.style.color = "white";
+            riskBox.style.background = "#34495e"; riskBox.style.color = "white";
 
             try {
-                // A. Fetch Weather Data
                 const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=wind_speed_10m,precipitation&timezone=Asia%2FKolkata`;
                 const marineUrl = `https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lng}&current=wave_height,wave_period&timezone=Asia%2FKolkata`;
 
                 const [wRes, mRes] = await Promise.all([fetch(weatherUrl), fetch(marineUrl)]);
-                const wData = await wRes.json();
-                const mData = await mRes.json();
+                const wData = await wRes.json(); const mData = await mRes.json();
 
                 const wind = wData.current.wind_speed_10m;
                 const rain = wData.current.precipitation;
                 const wave = mData.current.wave_height || 0;
 
-                windVal.innerText = wind + " km/h";
-                rainVal.innerText = rain + " mm";
-                waveVal.innerText = wave + " m";
+                windVal.innerText = wind + " km/h"; rainVal.innerText = rain + " mm"; waveVal.innerText = wave + " m";
 
-                // B. Send Data to Python Server
                 const aiResponse = await fetch('http://127.0.0.1:8000/api/v1/risk-check', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        wind_speed: wind,
-                        wave_height: wave,
-                        precipitation: rain
-                    })
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ wind_speed: wind, wave_height: wave, precipitation: rain })
                 });
 
                 const aiResult = await aiResponse.json();
 
-                // C. Show AI Decision
-                riskBox.innerHTML = `⚠️ ${aiResult.risk_level}: ${aiResult.confidence}% SURE`;
-                
+                let icon = "✅"; // Default Green Check
+
                 if (aiResult.risk_level === "RED") {
+                    icon = "⛔"; // Stop sign for Danger
                     riskBox.style.background = "#e74c3c";
                 } else if (aiResult.risk_level === "YELLOW") {
-                    riskBox.style.background = "#f1c40f";
+                    icon = "⚠️"; // Warning sign for Caution
+                    riskBox.style.background = "#f1c40f"; 
                     riskBox.style.color = "#333";
                 } else {
-                    riskBox.innerHTML = `✅ ${aiResult.risk_level}: ${aiResult.confidence}% SURE`;
                     riskBox.style.background = "#2ecc71";
-                    riskBox.style.color = "white";
                 }
+                
+                riskBox.innerHTML = `${icon} ${aiResult.risk_level}: ${aiResult.confidence}% SURE`;
 
             } catch (e) {
-                riskBox.innerHTML = "BACKEND OFFLINE";
-                riskBox.style.background = "#95a5a6";
-                console.error("AI Connection failed. Is uvicorn running?", e);
+                riskBox.innerHTML = "BACKEND OFFLINE"; riskBox.style.background = "#95a5a6";
             }
         }
 
         // --- BUTTON ACTIONS ---
         function startTrip() {
             const riskText = document.getElementById('risk-indicator').innerText;
-            if(riskText.includes("RED")) {
-                alert("⛔ TRIP BLOCKED: AI detects severe safety risk.");
-            } else if(riskText.includes("CLICK") || riskText.includes("LOCATING")) {
-                alert("Please wait for location or click the map first.");
-            } else {
-                alert("🚀 Trip Registered. Monitoring active for your safety.");
-            }
+            if(riskText.includes("RED")) alert("⛔ TRIP BLOCKED: AI detects severe safety risk.");
+            else if(riskText.includes("CLICK") || riskText.includes("LOCATING")) alert("Please wait for location or click the map first.");
+            else alert("🚀 Trip Registered. Monitoring active for your safety.");
         }
 
         function toggleRadar() {
@@ -205,23 +187,17 @@
             const btn = document.getElementById('btn-radar');
 
             if (radar.style.display === "none" || radar.style.display === "") {
-                radar.style.display = "block";
-                controls.style.display = "block";
-                btn.innerHTML = "❌ Close Radar";
-                btn.style.background = "#e74c3c"; // Turns red to indicate closing
+                radar.style.display = "block"; controls.style.display = "block";
+                btn.innerHTML = "❌ Close Radar"; btn.style.background = "#e74c3c";
             } else {
-                radar.style.display = "none";
-                controls.style.display = "none";
-                btn.innerHTML = "📡 Open Live Radar";
-                btn.style.background = "#8e44ad"; // Turns back to purple
+                radar.style.display = "none"; controls.style.display = "none";
+                btn.innerHTML = "📡 Open Live Radar"; btn.style.background = "#8e44ad";
             }
         }
 
         function changeLayer() {
             const layer = document.getElementById('layer-select').value;
             const iframe = document.getElementById('windy-iframe');
-            
-            // This updates the URL to switch between wind, rain, and waves
             iframe.src = `https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=°C&metricWind=km/h&zoom=10&overlay=${layer}&product=ecmwf&level=surface&lat=12.9141&lon=74.8560`;
         }
     </script>
